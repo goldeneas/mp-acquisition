@@ -14,6 +14,7 @@ import pickle
 import uuid
 import mediapipe as mp
 import time
+import datetime
 
 class Interface:
 
@@ -45,37 +46,45 @@ class Interface:
         self.gui.geometry(str(self.width)+"x"+str(self.height))
         self.gui.bind('<Escape>', lambda e: self.gui.quit())
         
-        self.loading_text = tk.Label(self.gui, text = "Loading Camera...")
-        self.loading_text.place(relx = 0.2,rely = 0.3)
+        # Main layout: Left frame for camera, Right frame for controls
+        self.left_frame = tk.Frame(self.gui, width=360, height=360, bg="#f0f0f0")
+        self.left_frame.pack(side="left", fill="both", expand=True, padx=10, pady=10)
         
-        #start button
-        self.start_button = tk.Button(self.gui, text ="Start", width = 10,command = self.update_main_window)
-        self.start_button.pack()
-        self.start_button.place(relx = 0.65,rely = 0.4)
+        self.right_frame = tk.Frame(self.gui)
+        self.right_frame.pack(side="right", fill="y", padx=10, pady=10)
 
-        #stop button
-        self.stop_button = tk.Button(self.gui, text ="Stop", width = 10, state = 'disabled',command = self.update_main_window)
-        self.stop_button.pack()
-        self.stop_button.place(relx = 0.80,rely = 0.4)
+        self.loading_text = tk.Label(self.left_frame, text = "Loading Camera...")
+        self.loading_text.pack(expand=True)
+        
+        # Label name section
+        tk.Label(self.right_frame, text = "Label name:", font=("Arial", 10, "bold")).pack(anchor="w", pady=(0, 2))
+        self.class_text = tk.Text(self.right_frame, width=23, height=1)
+        self.class_text.pack(pady=(0, 10))
+        
+        # Action buttons section
+        buttons_frame = tk.Frame(self.right_frame)
+        buttons_frame.pack(fill="x", pady=(0, 10))
+        
+        self.start_button = tk.Button(buttons_frame, text ="Start", width = 10, bg="#e1f5fe", command = self.update_main_window)
+        self.start_button.pack(side="left", expand=True, padx=(0, 5))
 
-        #class text
-        class_text_title = tk.Label(self.gui, text = "Label name:")
-        class_text_title.place(relx = 0.65,rely = 0.3)
-        self.class_text = tk.Text(self.gui,width=10,height=1)
-        self.class_text.pack()
-        self.class_text.place(relx = 0.78,rely = 0.3)
+        self.stop_button = tk.Button(buttons_frame, text ="Stop", width = 10, state = 'disabled', bg="#ffebee", command = self.update_main_window)
+        self.stop_button.pack(side="right", expand=True, padx=(5, 0))
+
+        # Real-time counter
+        self.samples_label = tk.Label(self.right_frame, text="Samples: 0", font=("Arial", 12, "bold"), fg="#2196f3")
+        self.samples_label.pack(pady=5)
+
+        # Output log section
+        tk.Label(self.right_frame, text = "Log Output:", font=("Arial", 10, "bold")).pack(anchor="w", pady=(5, 2))
+        self.output_log = tk.Text(self.right_frame, width=23, height=8, state='disabled', bg="#fafafa")
+        self.output_log.pack(fill="both", expand=True, pady=(0, 10))
         
-        #output log text
-        self.output_log = tk.Text(self.gui,width=21,height=3,state='disabled')
-        self.output_log.pack()
-        self.output_log.place(relx = 0.65,rely = 0.5)
+        # Setup button at the bottom
+        self.setup_button = tk.Button(self.right_frame, text ="Settings", width = 23, command = self.setup_window)
+        self.setup_button.pack(side="bottom", pady=5)
         
-        #setup button
-        self.setup_button = tk.Button(self.gui, text ="Setup", width = 23,command = self.setup_window)
-        self.setup_button.pack()
-        self.setup_button.place(relx = 0.65,rely = 0.65)
-        
-        #camera thread
+        # camera thread
         self.stopEvent = threading.Event()
         self.thread = threading.Thread(target=self.gui_camera, args=())
         self.thread.start()
@@ -97,56 +106,56 @@ class Interface:
     def setup_window(self):
         setup_gui = tk.Toplevel(self.gui)
         setup_gui.title("Setup")
-        setup_gui.geometry("400x400")
+        setup_gui.geometry("420x450")
+        setup_gui.padx = 20
+        setup_gui.pady = 20
         
-        #output path
-        path_title = tk.Label(setup_gui, text = "OutputPath:")
-        path_title.place(relx = 0.05,rely = 0.1)
-        path = tk.Text(setup_gui,width=20,height=1)
-        path.insert('1.0' ,self.output_path)
-        path.pack()
-        path.place(relx = 0.3,rely = 0.1)
-        
-        #output type file
-        type_title = tk.Label(setup_gui, text = "OutputType:")
-        type_title.place(relx = 0.05,rely = 0.2)
-        type_var = tk.StringVar()
-        type_var.set(self.output_type)
-        pkl = tk.Radiobutton(setup_gui, text="Pickle", value='pkl', variable=type_var)
-        pkl.pack()
-        pkl.place(relx = 0.3,rely = 0.2)
-        json = tk.Radiobutton(setup_gui, text="Json", value='json', variable=type_var)
-        json.pack()
-        json.place(relx = 0.45,rely = 0.2)
-        
-        #output save sequence
-        sequence_title = tk.Label(setup_gui, text = "SaveSequence:")
-        sequence_title.place(relx = 0.05,rely = 0.3)
-        sequence_var = tk.IntVar()
-        sequence_var.set(self.sequence_type)
-        seq_00 = tk.Radiobutton(setup_gui, text="Save output file every Stop.", value=0, variable=sequence_var)
-        seq_00.pack()
-        seq_00.place(relx = 0.3,rely = 0.3)
-        seq_01 = tk.Radiobutton(setup_gui, text="Save output file on app quit.", value=1, variable=sequence_var)
-        seq_01.pack()
-        seq_01.place(relx = 0.3,rely = 0.35)
-        
-        #set max number of acquisitions
-        title_max_acq = tk.Label(setup_gui, text = "Max acquisitions:")
-        title_max_acq.place(relx = 0.05,rely = 0.45)
-        ins_max_acq = tk.Text(setup_gui,width=10,height=1,state='disabled')
-        ins_max_acq.insert('1.0' ,self.max_acq)
-        ins_max_acq.pack()
-        ins_max_acq.place(relx = 0.45, rely = 0.45)
-        button_max_acq = tk.Button(setup_gui, text ="Enable", width = 5,command = lambda: self.max_acq_callback(button_max_acq,ins_max_acq))
-        button_max_acq.pack()
-        button_max_acq.place(relx = 0.3,rely = 0.45)
+        main_container = tk.Frame(setup_gui, padx=20, pady=20)
+        main_container.pack(fill="both", expand=True)
 
-        #save button
-        save_button = tk.Button(setup_gui, text ="Save", width = 10,
-                                command = lambda: self.save_setup(path.get("1.0",'end-1c'),type_var.get(),sequence_var.get(),ins_max_acq.get("1.0",'end-1c')))
-        save_button.pack()
-        save_button.place(relx = 0.45,rely = 0.7)
+        # Output path row
+        tk.Label(main_container, text="Output Path:", font=("Arial", 9, "bold")).grid(row=0, column=0, sticky="w", pady=10)
+        path = tk.Text(main_container, width=25, height=1)
+        path.insert('1.0', self.output_path)
+        path.grid(row=0, column=1, sticky="ew", padx=(10, 0))
+        
+        # Output type row
+        tk.Label(main_container, text="Output Type:", font=("Arial", 9, "bold")).grid(row=1, column=0, sticky="w", pady=10)
+        type_frame = tk.Frame(main_container)
+        type_frame.grid(row=1, column=1, sticky="w", padx=(10, 0))
+        
+        type_var = tk.StringVar(value=self.output_type)
+        tk.Radiobutton(type_frame, text="Pickle", value='pkl', variable=type_var).pack(side="left")
+        tk.Radiobutton(type_frame, text="Json", value='json', variable=type_var).pack(side="left", padx=(10, 0))
+        
+        # Save sequence row
+        tk.Label(main_container, text="Save Sequence:", font=("Arial", 9, "bold")).grid(row=2, column=0, sticky="nw", pady=10)
+        seq_frame = tk.Frame(main_container)
+        seq_frame.grid(row=2, column=1, sticky="w", padx=(10, 0))
+        
+        sequence_var = tk.IntVar(value=self.sequence_type)
+        tk.Radiobutton(seq_frame, text="Save every Stop", value=0, variable=sequence_var).pack(anchor="w")
+        tk.Radiobutton(seq_frame, text="Save on app quit", value=1, variable=sequence_var).pack(anchor="w", pady=(5, 0))
+        
+        # Max acquisitions row
+        tk.Label(main_container, text="Max Acq:", font=("Arial", 9, "bold")).grid(row=3, column=0, sticky="w", pady=10)
+        max_acq_frame = tk.Frame(main_container)
+        max_acq_frame.grid(row=3, column=1, sticky="w", padx=(10, 0))
+        
+        ins_max_acq = tk.Text(max_acq_frame, width=10, height=1, state='disabled')
+        ins_max_acq.insert('1.0', self.max_acq)
+        ins_max_acq.pack(side="left")
+        
+        button_max_acq = tk.Button(max_acq_frame, text="Enable", width=6, 
+                                  command=lambda: self.max_acq_callback(button_max_acq, ins_max_acq))
+        button_max_acq.pack(side="left", padx=(5, 0))
+
+        # Save button at the bottom
+        save_button = tk.Button(main_container, text="Save Settings", width=20, bg="#c8e6c9",
+                                command=lambda: self.save_setup(path.get("1.0",'end-1c'), type_var.get(), sequence_var.get(), ins_max_acq.get("1.0",'end-1c')))
+        save_button.grid(row=4, column=0, columnspan=2, pady=(30, 0))
+        
+        main_container.columnconfigure(1, weight=1)
       
     def save_setup(self,o_path,o_type,o_seq,o_max):
         try:
@@ -163,6 +172,8 @@ class Interface:
     def reset_outputs(self):
         self.output_vectors = []
         self.output_classes = []
+        if hasattr(self, 'samples_label'):
+            self.samples_label.config(text="Samples: 0")
     
     def return_outputs(self):
         return self.output_vectors,self.output_classes
@@ -176,11 +187,11 @@ class Interface:
     
     def save_outputs(self, output_type = "pkl"):
         if not self.if_vectors(): return
-        str_id = str(uuid.uuid4())
+        str_id = datetime.datetime.now()
         if output_type == "pkl":
             try:
-                vectors_out = os.path.join(str(self.output_path), "vectors_"+str_id+"_"+str(len(self.output_vectors))+".pkl")
-                classes_out = os.path.join(str(self.output_path), "classes_"+str_id+"_"+str(len(self.output_vectors))+".pkl")
+                vectors_out = os.path.join(str(self.output_path), "output", "vectors_"+str(str_id)+"_"+str(len(self.output_vectors))+".pkl")
+                classes_out = os.path.join(str(self.output_path), "output", "classes_"+str(str_id)+"_"+str(len(self.output_vectors))+".pkl")
 
                 print(vectors_out)
                 with open(vectors_out, "wb") as v_outfile:
@@ -278,6 +289,8 @@ class Interface:
             if self.start_acq == True:
                 self.output_vectors.append(self.get_mediapipe_keypoints(results.hand_landmarks,cv2image.shape[1],cv2image.shape[0]))
                 self.output_classes.append(self.class_string)
+                self.samples_label.config(text=f"Samples: {len(self.output_vectors)}")
+                print(f"Captured sample {len(self.output_vectors)} for class: {self.class_string}")
                 #if there is a max value in settings
                 if self.max_acq > 0 and len(self.output_vectors) >= self.max_acq:
                     self.save_outputs(output_type = self.output_type)
@@ -316,9 +329,10 @@ class Interface:
 
                     # if the panel is not None, initialize it
                     if self.camera_label is None:
-                        self.camera_label = tk.Label(self.gui)
-                        self.camera_label.pack()
-                        self.camera_label.place(relx = 0,rely = 0)
+                        if self.loading_text:
+                            self.loading_text.destroy()
+                        self.camera_label = tk.Label(self.left_frame)
+                        self.camera_label.pack(expand=True)
                     # otherwise, simply update
                     else:
                         self.camera_label.configure(image=imgtk)
