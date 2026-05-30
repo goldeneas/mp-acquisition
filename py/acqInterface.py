@@ -12,6 +12,8 @@ import threading
 import os
 import pickle
 import uuid
+import mediapipe as mp
+import time
 
 class Interface:
 
@@ -177,11 +179,14 @@ class Interface:
         str_id = str(uuid.uuid4())
         if output_type == "pkl":
             try:
-                print(str(self.output_path) + "\\vectors_" + str_id + ".pkl")
-                with open(str(self.output_path) + "\\vectors_" + str_id + "_" + str(len(self.output_vectors)) + ".pkl", "wb") as v_outfile:
+                vectors_out = os.path.join(str(self.output_path), "vectors_"+str_id+"_"+str(len(self.output_vectors))+".pkl")
+                classes_out = os.path.join(str(self.output_path), "classes_"+str_id+"_"+str(len(self.output_vectors))+".pkl")
+
+                print(vectors_out)
+                with open(vectors_out, "wb") as v_outfile:
                     print("Saving vectors pikle file...")
                     pickle.dump(self.output_vectors, v_outfile)
-                with open(str(self.output_path) + "\\classes_" + str_id + "_" + str(len(self.output_classes)) +  ".pkl", "wb") as c_outfile:
+                with open(classes_out, "wb") as c_outfile:
                     print("Saving classes pikle file...")
                     pickle.dump(self.output_classes, c_outfile)                    
                 messagebox.showinfo("Info", "All output files correctly saved.")
@@ -252,27 +257,33 @@ class Interface:
         if self.model_type == "Hand":
             vector = []
             for markers in landmark:
-                for mark in range(len(markers.landmark)):
-                    vector.append(markers.landmark[mark].x*window_w)#x
-                    vector.append(markers.landmark[mark].y*window_h)#y
+                for mark in markers:
+                    vector.append(mark.x*window_w)#x
+                    vector.append(mark.y*window_h)#y
             return vector
         else:
             print("Error to model_type.")
             return []
     
     def show_hand_keypoints(self, cv2image):
-        results_img = self.mp_model.process(cv2image)
-        if results_img.multi_hand_landmarks:
+        # MediaPipe Tasks expects mp.Image
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2image)
+        timestamp_ms = int(time.time() * 1000)
+        
+        # Use detect_for_video for video streams
+        results = self.mp_model.detect_for_video(mp_image, timestamp_ms)
+        
+        if results.hand_landmarks:
             #load keypoints to vectors
             if self.start_acq == True:
-                self.output_vectors.append(self.get_mediapipe_keypoints(results_img.multi_hand_landmarks,cv2image.shape[1],cv2image.shape[0]))
+                self.output_vectors.append(self.get_mediapipe_keypoints(results.hand_landmarks,cv2image.shape[1],cv2image.shape[0]))
                 self.output_classes.append(self.class_string)
                 #if there is a max value in settings
                 if self.max_acq > 0 and len(self.output_vectors) >= self.max_acq:
                     self.save_outputs(output_type = self.output_type)
                     self.update_main_window()
             #show keypoints        
-            for hand_landmarks in results_img.multi_hand_landmarks:
+            for hand_landmarks in results.hand_landmarks:
                 self.mp_drawing.draw_landmarks(
                     cv2image,
                     hand_landmarks,
@@ -283,7 +294,7 @@ class Interface:
     
     def gui_camera(self):
         width, height = 360, 360
-        self.cap = cv2.VideoCapture(1)
+        self.cap = cv2.VideoCapture(0)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
         
